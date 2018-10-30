@@ -11,3 +11,5 @@
 		--gpu 6： 使用6号gpu
 		--savedir: 结果存储路劲
 
+		回收savedir里的文件
+
