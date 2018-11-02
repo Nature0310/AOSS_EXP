@@ -291,7 +291,7 @@ def do_it(model):
             l *= j
         if 'aux' not in name:
             k = k + l
-    print("The sum of parameters：" + str(k / 1e6))
+    print("The sum of parameters:" + str(k / 1e6))
     a = np.sum(np.prod(v.size()) for v in model.parameters())
     print(a / 1e6)
     model = torch.nn.DataParallel(model).cuda()
