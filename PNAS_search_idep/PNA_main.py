@@ -47,6 +47,8 @@ parser.add_argument('--manual-seed', default=0, type=int, metavar='N',
                     help='manual seed (default: 0)')
 parser.add_argument('--block-start', default=1, type=int, metavar='N',
                     help='block start (default: 1)')
+parser.add_argument('--id', default=0, type=int, metavar='N',
+                    help='id (default: 0)')
 parser.add_argument('-j', '--workers', default=12, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--gpu', default='0',
@@ -492,7 +494,7 @@ def load_data(arch, change=False):
         return acc
     # with open("/home/lmy/Neural Archtecture Search/PNAS_pytorch/results_test/savedir/PNAS_0_block.txt", "r") as fp:
 
-    fp = open("./one_b_stem/savedir/PNAS_1_block.txt", "r")
+    fp = open("./PNAS_1_block.txt", "r")
     lines = fp.readlines()
     acc = []
     print("reading one block accuracy")
@@ -538,6 +540,7 @@ def str_to_arch(w, b):
 def main():
     global args
     print (args)
+    args.savedir = os.path.join(args.savedir, '%d' % args.id)
     # a = torch.FloatTensor([2,3,1.2,4.533])
     # a = a.numpy()
     # print(a[3])

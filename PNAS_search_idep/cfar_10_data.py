@@ -11,6 +11,7 @@ import pickle
 import numpy as np
 import h5py
 from PIL import Image
+from utils import download_url, check_integrity
 
 
 class CIFAR10(data.Dataset):
@@ -30,7 +31,7 @@ class CIFAR10(data.Dataset):
         ['test_batch', '40351d587109b95175f43aff81a1287e'],
     ]
 
-    def __init__(self, root, train=True, num_valid=0, valid=False, transform=None, target_transform=None, download=False):
+    def __init__(self, root, train=True, num_valid=0, valid=False, transform=None, target_transform=None, download=True):
         self.root = os.path.expanduser(root)
         self.transform = transform
         self.target_transform = target_transform
@@ -66,7 +67,8 @@ class CIFAR10(data.Dataset):
             self.train_data = self.train_data.reshape((50000, 3, 32, 32))
             self.train_data = self.train_data.transpose((0, 2, 3, 1))
             if num_valid > 0:
-                ind_path = os.path.join(root, self.base_folder, 'split.h5')
+                #ind_path = os.path.join(root, self.base_folder, 'split.h5')
+                ind_path = 'split.h5'
                 if os.path.exists(ind_path):
                     with h5py.File(ind_path, 'r') as f:
                         index = f['index'][:]
@@ -124,10 +126,31 @@ class CIFAR10(data.Dataset):
             return len(self.test_data)
 
     def _check_integrity(self):
+        root = self.root
+        for fentry in (self.train_list + self.test_list):
+            filename, md5 = fentry[0], fentry[1]
+            fpath = os.path.join(root, self.base_folder, filename)
+            if not check_integrity(fpath, md5):
+                return False
         return True
 
     def download(self):
-        pass
+        import tarfile
+
+        if self._check_integrity():
+            print('Files already downloaded and verified')
+            return
+
+        root = self.root
+        download_url(self.url, root, self.filename, self.tgz_md5)
+
+        # extract file
+        cwd = os.getcwd()
+        tar = tarfile.open(os.path.join(root, self.filename), "r:gz")
+        os.chdir(root)
+        tar.extractall()
+        tar.close()
+        os.chdir(cwd)
 
 if __name__ == '__main__':
     trainset = CIFAR10(root='../data', train=True, num_valid=5000, valid=False)
