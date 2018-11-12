@@ -494,7 +494,7 @@ def load_data(arch, change=False):
         return acc
     # with open("/home/lmy/Neural Archtecture Search/PNAS_pytorch/results_test/savedir/PNAS_0_block.txt", "r") as fp:
 
-    fp = open("./PNAS_1_block.txt", "r")
+    fp = open("./one_b_stem/savedir/PNAS_1_block.txt", "r")
     lines = fp.readlines()
     acc = []
     print("reading one block accuracy")
@@ -691,13 +691,13 @@ def main():
                 os.makedirs(args.savedir, exist_ok=True)
                 # if args.diverse:
                 is_writting = True
-                with open(result_filename, 'r') as fout:
-                    lines =fout.readlines()
-                    for line in lines:
-                        if ("%s %s" % (use, ops)) in line:
-                            is_writting = False
-                    if is_writting:
-                        with open(result_filename, 'a') as fou:
+                with open(result_filename, 'a') as fou:
+                    with open(result_filename, 'r') as fout:
+                        lines =fout.readlines()
+                        for line in lines:
+                            if ("%s %s" % (use, ops)) in line:
+                                is_writting = False
+                        if is_writting:
                             fou.write("%s %s : %.4f %.4f %.4f   %s %s : %.4f\n"
                                         % (use, ops, val_prec1, test_prec1, predic[j], u, o, prek[j]))
         # print("debug1", len(val_acc))
