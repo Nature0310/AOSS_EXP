@@ -494,7 +494,7 @@ def load_data(arch, change=False):
         return acc
     # with open("/home/lmy/Neural Archtecture Search/PNAS_pytorch/results_test/savedir/PNAS_0_block.txt", "r") as fp:
 
-    fp = open("./one_b_stem/savedir/PNAS_1_block.txt", "r")
+    fp = open("./PNAS_1_block.txt", "r")
     lines = fp.readlines()
     acc = []
     print("reading one block accuracy")
