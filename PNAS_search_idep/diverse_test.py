@@ -1,8 +1,3 @@
-from __future__ import absolute_import
-from __future__ import unicode_literals
-from __future__ import print_function
-from __future__ import division
-
 # -*- coding: utf-8 -*-
 from easydict import EasyDict as edict
 import numpy as np
@@ -150,11 +145,11 @@ class NetGraph(object):
                     tmp_out = np.zeros(self.max_degree[1] + 1)
                     k_set = k_adjacent_up[i] + k_adjacent_down[i]
                     if len(k_set) != 0:
-                        for k_node_name in k_set:
-                            tmp_in[len(self.G[k_node_name].in_nodes)] += 1
-                            tmp_out[len(self.G[k_node_name].out_nodes)] += 1
-                        # tmp_in[len(self.G[node_name].in_nodes)] += 1
-                        # tmp_out[len(self.G[node_name].out_nodes)] += 1
+                        # for k_node_name in k_set:
+                        #     tmp_in[len(self.G[k_node_name].in_nodes)] += 1
+                        #     tmp_out[len(self.G[k_node_name].out_nodes)] += 1
+                        tmp_in[len(self.G[node_name].in_nodes)] += 1
+                        tmp_out[len(self.G[node_name].out_nodes)] += 1
                     k_degree_in += tmp_in * thresh
                     k_degree_out += tmp_out * thresh
                     thresh *= delta
@@ -194,7 +189,7 @@ def cal_norm2(a, b):
         return np.sum((a - b) * (a - b))
 
 
-def cal_similarity(node1, node2, gamma_in=0.1, gamma_out=0.1, gamma_attr=2):
+def cal_similarity(node1, node2, gamma_in=0.5, gamma_out=0.5, gamma_attr=1):
     in_dist = cal_norm2(node1.reps_indegree, node2.reps_indegree)
     in_dist *= gamma_in
 
@@ -259,6 +254,176 @@ def calculate_graph_dist(G1, G2, k=2, delta=0.1):
     return Matrix_Y, dist
 
 
+def create_Desenet1_1_1(grows):
+    # define nodes
+    input_node = Node(name='input_node', attribute=edict({'nout': 3, 'type': 'image'}))
+    num_features = 2*grows[0]
+    init_conv_node = Node(name='init_conv_node', attribute=edict({'nout': 2*grows[0], 'type': 'conv', 'ks': 3,
+                                                             'stride': 1, 'padding': 1}))
+    stage1_conv1x1_node = Node(name='stage1_conv1x1_node', attribute=edict({'nout': 4*grows[0], 'type': 'conv', 'ks': 1,
+                                                             'stride': 1, 'padding': 0}))
+    stage1_conv3x3_node = Node(name='stage1_conv3x3_node', attribute=edict({'nout': grows[0], 'type': 'conv', 'ks': 3,
+                                                                       'stride': 1, 'padding': 1}))
+    concate1_node = Node(name='concate1_node', attribute=edict({'type': 'concate', 'nout':  num_features + grows[0]}))
+    avg_pool1_node = Node(name='avg_pool1_node', attribute=edict({'type': 'avg_pool', 'nout':  num_features + grows[0]}))
+    num_features += grows[0]
+
+    stage2_conv1x1_node = Node(name='stage2_conv1x1_node', attribute=edict({'nout': 4 * grows[1], 'type': 'conv', 'ks': 1,
+                                                                       'stride': 1, 'padding': 0}))
+    stage2_conv3x3_node = Node(name='stage2_conv3x3_node', attribute=edict({'nout': grows[1], 'type': 'conv', 'ks': 3,
+                                                                       'stride': 1, 'padding': 1}))
+    concate2_node = Node(name='concate2_node', attribute=edict({'type': 'concate', 'nout': num_features + grows[1]}))
+    avg_pool2_node = Node(name='avg_pool2_node', attribute=edict({'type': 'avg_pool', 'nout': num_features + grows[1]}))
+    num_features += grows[1]
+
+    stage3_conv1x1_node = Node(name='stage3_conv1x1_node', attribute=edict({'nout': 4 * grows[2], 'type': 'conv', 'ks': 1,
+                                                                       'stride': 1, 'padding': 0}))
+    stage3_conv3x3_node = Node(name='stage3_conv3x3_node', attribute=edict({'nout': grows[2], 'type': 'conv', 'ks': 3,
+                                                                       'stride': 1, 'padding': 1}))
+    concate3_node = Node(name='concate3_node', attribute=edict({'type': 'concate', 'nout': num_features + grows[2]}))
+    global_pool_node = Node(name='global_pool_node', attribute=edict({'type': 'avg_pool', 'nout': num_features + grows[2]}))
+    num_features += grows[2]
+    full1_node = Node(name='full1_node', attribute=edict({'nout': num_features, 'type': 'full'}))
+    softmax_node = Node(name='softmax_node', attribute=edict({'nout': 10, 'type': 'softmax'}))
+
+    # define links
+    input_node.in_nodes = []
+    input_node.out_nodes = [init_conv_node()]
+    init_conv_node.in_nodes = [input_node()]
+    init_conv_node.out_nodes = [stage1_conv1x1_node(), concate1_node()]
+    stage1_conv1x1_node.in_nodes = [init_conv_node()]
+    stage1_conv1x1_node.out_nodes = [stage1_conv3x3_node()]
+    stage1_conv3x3_node.in_nodes = [stage1_conv1x1_node()]
+    stage1_conv3x3_node.out_nodes = [concate1_node()]
+    concate1_node.in_nodes = [init_conv_node(), stage1_conv3x3_node()]
+    concate1_node.out_nodes = [avg_pool1_node()]
+    avg_pool1_node.in_nodes = [concate1_node()]
+    avg_pool1_node.out_nodes = [stage2_conv1x1_node(), concate2_node()]
+    stage2_conv1x1_node.in_nodes = [avg_pool1_node()]
+    stage2_conv1x1_node.out_nodes = [stage2_conv3x3_node()]
+    stage2_conv3x3_node.in_nodes = [stage2_conv1x1_node()]
+    stage2_conv3x3_node.out_nodes = [concate2_node()]
+    concate2_node.in_nodes = [avg_pool1_node(), stage2_conv3x3_node()]
+    concate2_node.out_nodes = [avg_pool2_node()]
+    avg_pool2_node.in_nodes = [concate2_node()]
+    avg_pool2_node.out_nodes = [stage3_conv1x1_node(), concate3_node()]
+    stage3_conv1x1_node.in_nodes = [avg_pool2_node()]
+    stage3_conv1x1_node.out_nodes = [stage3_conv3x3_node()]
+    stage3_conv3x3_node.in_nodes = [stage3_conv1x1_node()]
+    stage3_conv3x3_node.out_nodes = [concate3_node()]
+    concate3_node.in_nodes = [avg_pool2_node(), stage3_conv3x3_node()]
+    concate3_node.out_nodes = [global_pool_node()]
+    global_pool_node.in_nodes = [concate3_node()]
+    global_pool_node.out_nodes = [full1_node()]
+    full1_node.in_nodes = [global_pool_node()]
+    full1_node.out_nodes = [softmax_node()]
+    softmax_node.in_nodes = [full1_node()]
+    softmax_node.out_nodes = []
+
+    Graph1 = NetGraph()
+    Graph1.add_nodes([input_node, init_conv_node,
+                      stage1_conv1x1_node, stage1_conv3x3_node, concate1_node, avg_pool1_node,
+                      stage2_conv1x1_node, stage2_conv3x3_node, concate2_node, avg_pool2_node,
+                      stage3_conv1x1_node, stage3_conv3x3_node, concate3_node, global_pool_node,
+                      full1_node, softmax_node])
+    Graph1.create()
+    return Graph1
+
+
+class CreateDensNetGraph(object):
+    def __init__(self, stages, grows):
+        assert len(stages) == len(grows)
+        self.NODES = collections.OrderedDict()
+        self.NODES['input_node'] = Node(name='input_node', attribute=edict({'nout': 3, 'type': 'image'}))
+        num_features = 2 * grows[0]
+        self.NODES['init_conv_node'] = Node(name='init_conv_node',
+                                            attribute=edict({'nout': 2 * grows[0], 'type': 'conv', 'ks': 3,
+                                                                      'stride': 1, 'padding': 1}))
+        for i, num_layers in enumerate(stages):
+            for j in range(num_layers):
+                self.NODES['stage%d_%d_conv1x1_node' % (i, j)] = Node(name='stage%d_%d_conv1x1_node' % (i, j),
+                                                                      attribute=edict({'nout': 4*grows[i],
+                                                                                       'type': 'conv',
+                                                                                       'ks': 1,
+                                                                                       'stride': 1,
+                                                                                       'padding': 0}))
+                self.NODES['stage%d_%d_conv3x3_node' % (i, j)] = Node(name='stage%d_%d_conv3x3_node' % (i, j),
+                                                                      attribute=edict({'nout': grows[i],
+                                                                                       'type': 'conv',
+                                                                                       'ks': 3,
+                                                                                       'stride': 1,
+                                                                                       'padding': 1}))
+                self.NODES['stage%d_%d_concate_node' % (i, j)] = Node(name='stage%d_%d_concate_node' % (i, j),
+                                                                      attribute=edict({'type': 'concate',
+                                                                                       'nout':  num_features + grows[i]}))
+                num_features += grows[i]
+            if i == len(stages) - 1:
+                self.NODES['global_pool_node'] = Node(name='global_pool_node',
+                                                      attribute=edict({'type': 'avg_pool',
+                                                                       'ks': 8,
+                                                                       'stride': 1,
+                                                                       'nout': num_features}))
+            else:
+                self.NODES['avg_pool%d_node' % i] = Node(name='avg_pool%d_node' % i,
+                                                         attribute=edict({'type': 'avg_pool',
+                                                                          'ks': 2,
+                                                                          'stride': 2,
+                                                                          'nout': num_features}))
+        self.NODES['full_node'] = Node(name='full1_node', attribute=edict({'nout': num_features, 'type': 'full'}))
+        self.NODES['softmax_node'] = Node(name='softmax_node', attribute=edict({'nout': 10, 'type': 'softmax'}))
+
+        # define links
+        self.NODES['input_node'].in_nodes = []
+        self.NODES['input_node'].out_nodes = [self.NODES['init_conv_node']()]
+        self.NODES['init_conv_node'].in_nodes = [self.NODES['input_node']()]
+        self.NODES['init_conv_node'].out_nodes = [self.NODES['stage0_0_conv1x1_node'](),
+                                                  self.NODES['stage0_0_concate_node']()]
+        for i, num_layers in enumerate(stages):
+            for j in range(num_layers):
+                if i == 0 and j == 0:
+                    self.NODES['stage%d_%d_conv1x1_node' % (i, j)].in_nodes = [self.NODES['init_conv_node']()]
+                    self.NODES['stage%d_%d_concate_node' % (i, j)].in_nodes = [self.NODES['init_conv_node']()]
+                elif j == 0:
+                    self.NODES['stage%d_%d_conv1x1_node' % (i, j)].in_nodes = [self.NODES['avg_pool%d_node' % (i-1)]()]
+                    self.NODES['stage%d_%d_concate_node' % (i, j)].in_nodes = [self.NODES['avg_pool%d_node' % (i-1)]()]
+                else:
+                    self.NODES['stage%d_%d_conv1x1_node' % (i, j)].in_nodes = [self.NODES['stage%d_%d_concate_node' % (i, j-1)]()]
+                    self.NODES['stage%d_%d_concate_node' % (i, j)].in_nodes = [
+                        self.NODES['stage%d_%d_concate_node' % (i, j - 1)]()]
+                self.NODES['stage%d_%d_conv1x1_node' % (i, j)].out_nodes = [
+                        self.NODES['stage%d_%d_conv3x3_node' % (i, j)]()]
+
+                self.NODES['stage%d_%d_conv3x3_node' % (i, j)].in_nodes = [self.NODES['stage%d_%d_conv1x1_node' % (i, j)]()]
+                self.NODES['stage%d_%d_conv3x3_node' % (i, j)].out_nodes = [
+                    self.NODES['stage%d_%d_concate_node' % (i, j)]()]
+
+                self.NODES['stage%d_%d_concate_node' % (i, j)].in_nodes.append(self.NODES['stage%d_%d_conv3x3_node' % (i, j)]())
+                if j == num_layers - 1:
+                    if i == len(stages) - 1:
+                        self.NODES['stage%d_%d_concate_node' % (i, j)].out_nodes = [self.NODES['global_pool_node']()]
+                    else:
+                        self.NODES['stage%d_%d_concate_node' % (i, j)].out_nodes = [self.NODES['avg_pool%d_node' % i]()]
+                else:
+                    self.NODES['stage%d_%d_concate_node' % (i, j)].out_nodes = [self.NODES['stage%d_%d_conv1x1_node' % (i, j + 1)](),
+                                                                                self.NODES[
+                                                                                    'stage%d_%d_concate_node' % (i, j+1)]()]
+            if i == len(stages) - 1:
+                self.NODES['global_pool_node'].in_nodes = [self.NODES['stage%d_%d_concate_node' % (i, j)]()]
+                self.NODES['global_pool_node'].out_nodes = [self.NODES['full_node']()]
+            else:
+                self.NODES['avg_pool%d_node' % i].in_nodes = [self.NODES['stage%d_%d_concate_node' % (i, j)]()]
+                self.NODES['avg_pool%d_node' % i].out_nodes = [self.NODES['stage%d_%d_conv1x1_node' % (i+1, 0)](),
+                                                               self.NODES['stage%d_%d_concate_node' % (i+1, 0)]()]
+        self.NODES['full_node'].in_nodes = [self.NODES['global_pool_node']()]
+        self.NODES['full_node'].out_nodes = [self.NODES['softmax_node']()]
+        self.NODES['softmax_node'].in_nodes = [self.NODES['full_node']()]
+        self.NODES['softmax_node'].out_nodes = []
+
+    def create(self):
+        Graph1 = NetGraph()
+        Graph1.add_nodes([self.NODES[name] for name in self.NODES.keys()])
+        Graph1.create()
+        return Graph1
 
 class CreatePNANetGraph(object):
     def __init__(self, archtecture, cell_n=2):
@@ -363,6 +528,9 @@ def create_pnanet_graph(arch, n):
 
 
 
+def create_densenet_graph(stages, grows):
+    G1 = CreateDensNetGraph(stages=stages, grows=grows)
+    return G1.create()
 
 def train_setting(input_size, ops_size=8):
     elements = crea_double(input_size=input_size, ops_size=ops_size)
@@ -396,12 +564,48 @@ def _oneto_str(compre_op_lc):
         use_prev += I1+I2
         ops += O1+O2
     return use_prev, ops
+def str_to_arch(w, b):
+    arch = torch.LongTensor([])
+    print(w)
+    for idx in range(b):
+        I1 = int(w[idx*2])
+        I2 = int(w[idx*2+1])
+        O1 = int(w[b*2+1+idx*2])
+        O2 = int(w[b*2+2+idx*2])
+        oneblock = torch.LongTensor([[[I1, I2, O1, O2]]])
+        arch = torch.cat([arch, oneblock], 1)
+    return arch
+
+def load_data(filepath ,change=True):
+    fp = open(filepath, "r")
+    lines = fp.readlines()
+    name = []
+    print("reading one block accuracy")
+    for line in lines:
+        w = line.split(":")[0]
+        name.append(w)
+    length = len(name)
+    # acc = torch.Tensor(acc).resize(length, 1)
+    # print('block1',acc)
+    return name
 if __name__ == '__main__':
-    S1 =  train_setting(2)
-    print (S1[5])
-    G1 = create_pnanet_graph(S1[0], n=2)
-    for s in S1:
+    name = load_data('/home/lmy/Neural Archtecture Search/PNAS_pytorch/9_20_topk/lstm64_1/block_3.txt')
+    # S1 =  train_setting(2)
+    # c = S1[0]
+    print (name[0])
+    a = str_to_arch(name[0], b=3)
+    G1 = create_pnanet_graph(a[0], n=2)
+    for s in name:
+        s = str_to_arch(s, b=3)[0]
         G2 = create_pnanet_graph(s, n=2)
         Y, dist = calculate_graph_dist(G1, G2)
         a = _oneto_str(s)
         print(a, dist)
+
+
+
+    # G1 = create_densenet_graph([1, 1, 1], [8, 16, 32])
+    # G2 = create_densenet_graph([1, 1, 1], [8, 16, 64])
+    # Y, dist = calculate_graph_dist(G1, G2)
+    # print(Y)
+    # print(dist)
