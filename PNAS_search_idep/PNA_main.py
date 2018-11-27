@@ -721,8 +721,8 @@ def main():
                 test_prec1 = average(result_dict[name]['test'])
 
                 #####
-                val_prec1 = torch.from_numpy(np.array(val_prec1)).cuda()
-                test_prec1 = torch.from_numpy(np.array(test_prec1)).cuda()
+                val_prec1 = torch.from_numpy(np.array(val_prec1,dtype=np.float32)).cuda()
+                test_prec1 = torch.from_numpy(np.array(test_prec1,dtype=np.float32)).cuda()
                 ######
 
                 val_acc.append(val_prec1)
