@@ -10,23 +10,43 @@ import copy
 import collections
 import torch
 
+#
+# ops = {
+#     0: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'conv', 'ks': 1, 'stride': stride, 'padding': 0}),
+#     1: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'sep_conv', 'ks': 3, 'stride': stride, 'padding': 1}),
+#     2: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'sep_conv', 'ks': 5, 'stride': stride, 'padding': 2}),
+#     3: lambda stride, reduction:
+#     edict({'nout': 32 if reduction else 16,
+#            'type': 'identity' if stride == 1 else 'conv',
+#            'ks': 0 if stride == 1 else 1,
+#            'stride': 0 if stride==1 else 1, 'padding': 0}),
+#     4: lambda stride, reduction: edict({'nout': 0, 'type': 'avg_pol', 'ks': 0, 'stride': stride, 'padding': 1}),
+#     5: lambda stride, reduction: edict({'nout': 0, 'type': 'max_pol', 'ks': 0, 'stride': stride, 'padding': 1}),
+#     6: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'sep_conv', 'ks': 7, 'stride': stride, 'padding': 3}),
+#     7: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'dil_conv', 'ks': 3, 'stride': stride, 'padding': 1}),
+#
+# }
 
 ops = {
-    0: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'conv', 'ks': 1, 'stride': stride, 'padding': 0}),
-    1: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'sep_conv', 'ks': 3, 'stride': stride, 'padding': 1}),
-    2: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'sep_conv', 'ks': 5, 'stride': stride, 'padding': 2}),
-    3: lambda stride, reduction:
-    edict({'nout': 32 if reduction else 16,
+    0: lambda channel, stride, reduction: edict(
+        {'nout': channel, 'type': 'conv', 'ks': 1, 'stride': stride, 'padding': 0}),
+    1: lambda channel, stride, reduction: edict(
+        {'nout': channel, 'type': 'sep_conv', 'ks': 3, 'stride': stride, 'padding': 1}),
+    2: lambda channel, stride, reduction: edict(
+        {'nout': channel, 'type': 'sep_conv', 'ks': 5, 'stride': stride, 'padding': 2}),
+    3: lambda channel, stride, reduction:
+    edict({'nout': channel,
            'type': 'identity' if stride == 1 else 'conv',
            'ks': 0 if stride == 1 else 1,
-           'stride': 0 if stride==1 else 1, 'padding': 0}),
-    4: lambda stride, reduction: edict({'nout': 0, 'type': 'avg_pol', 'ks': 0, 'stride': stride, 'padding': 1}),
-    5: lambda stride, reduction: edict({'nout': 0, 'type': 'max_pol', 'ks': 0, 'stride': stride, 'padding': 1}),
-    6: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'sep_conv', 'ks': 7, 'stride': stride, 'padding': 3}),
-    7: lambda stride, reduction: edict({'nout': 32 if reduction else 16, 'type': 'dil_conv', 'ks': 3, 'stride': stride, 'padding': 1}),
-
-
-
+           'stride': 0 if stride == 1 else 1, 'padding': 0}),
+    4: lambda channel, stride, reduction: edict(
+        {'nout': 0, 'type': 'avg_pol', 'ks': 0, 'stride': stride, 'padding': 1}),
+    5: lambda channel, stride, reduction: edict(
+        {'nout': 0, 'type': 'max_pol', 'ks': 0, 'stride': stride, 'padding': 1}),
+    6: lambda channel, stride, reduction: edict(
+        {'nout': 32 if reduction else 16, 'type': 'sep_conv', 'ks': 7, 'stride': stride, 'padding': 3}),
+    7: lambda channel, stride, reduction: edict(
+        {'nout': 32 if reduction else 16, 'type': 'dil_conv', 'ks': 3, 'stride': stride, 'padding': 1}),
 
 }
 
@@ -261,17 +281,18 @@ def calculate_graph_dist(G1, G2, k=2, delta=0.1):
 
 
 class CreatePNANetGraph(object):
-    def __init__(self, archtecture, cell_n=2):
+    def __init__(self, archtecture, channel, cell_n=2):
         num_block = archtecture.size(0)
         self.NODES = collections.OrderedDict()
+        self.channel = 3*channel
         self.NODES['input_node'] = Node(name='input_node', attribute=edict({'nout': 3, 'type': 'image'}))
         self.NODES['init_conv_node'] = Node(name='init_conv_node',
-                                            attribute=edict({'nout': 16, 'type': 'conv', 'ks': 3,
+                                            attribute=edict({'nout': self.channel, 'type': 'conv', 'ks': 3,
                                                              'stride': 1, 'padding': 1}))
 
         # define node
         use = []
-        for i in range(3*cell_n+2):
+        for i in range(3*cell_n):
             if i == 0:
                 cell_use = [self.NODES['init_conv_node'](), self.NODES['init_conv_node']()]
             else:
@@ -280,22 +301,28 @@ class CreatePNANetGraph(object):
             for j, block in enumerate(archtecture):
 
                 reduction = True if i in [cell_n, 2*cell_n + 1] else False
+                channel =  2*channel if i in [cell_n, 2*cell_n + 1] else channel
                 # block left
                 stride = 2 if reduction and int(block[0]) < 2 else 1
                 self.NODES['cell%d_block%d_op1' % (i, j)] = Node(name='cell%d_block%d_op1' % (i, j),
-                                                                 attribute=ops[int(block[2])](stride, reduction))
+                                                                 attribute=ops[int(block[2])](channel,stride, reduction))
                 # block right
                 stride = 2 if reduction and int(block[1]) < 2 else 1
                 self.NODES['cell%d_block%d_op2' % (i, j)] = Node(name='cell%d_block%d_op2' % (i, j),
-                                                                 attribute=ops[int(block[3])](stride, reduction))
+                                                                 attribute=ops[int(block[3])](channel, stride, reduction))
                 # add
                 self.NODES['cell%d_block%d_add' % (i, j)] = Node(name='cell%d_block%d_adda' % (i, j),
                                                                  attribute=edict({'type': 'add'}))
+                # if i == 2*cell_n/3:
+                #     self.NODES['AuxiliaryHead_avg'] = Node(name='Aux_avg', attribute=ops[4]( num_block*(channel), 2, reduction))
+                #     self.NODES['AuxiliaryHead_cov1'] = Node(name='Aux_cov1', attribute=ops[0]( num_block*(channel), 1, reduction))
+                #     self.NODES['AuxiliaryHead_cov2'] = Node(name='Aux_cov2', attribute=ops[1](128, 1, reduction))
                 cell_use.append(self.NODES['cell%d_block%d_add' % (i, j)]())
             self.NODES['cell.%d_concate' % (i)] = Node(name='cell.%d_block%d_concate' % (i, j),
                                                                 attribute=edict({'type': 'concate',
-                                                                'nout': num_block*(32 if reduction else 16)}))
+                                                                'nout': num_block*(channel)}))
             use.append(cell_use)
+        # self.NODES['AuxiliaryHead_avg'] = Node(name='Aux_avg', attribute=ops[4])
         #  define link
         self.NODES['input_node'].in_nodes = []
         self.NODES['input_node'].out_nodes = [self.NODES['init_conv_node']()]
@@ -310,7 +337,7 @@ class CreatePNANetGraph(object):
                 self.NODES['init_conv_node'].out_nodes.append(self.NODES['cell%d_block%d_op2' % (0, v)]())
                 if block[1] == 0:
                     self.NODES['init_conv_node'].out_nodes.append(self.NODES['cell%d_block%d_op2' % (1, v)]())
-        for i in range(3*cell_n+2):
+        for i in range(3*cell_n):
             used_input = use[i]
             for j, block in enumerate(archtecture):
                 # block left
@@ -329,7 +356,7 @@ class CreatePNANetGraph(object):
             a = []
             b = []
             for v, block in enumerate(archtecture):
-                if i < 3*cell_n:
+                if i < 3*cell_n-2:
                     if block[0] == 1:
                         a.append(self.NODES['cell%d_block%d_op1' % (i+1, v)]())
                     elif block[0] == 0:
@@ -339,7 +366,7 @@ class CreatePNANetGraph(object):
                         a.append(self.NODES['cell%d_block%d_op2' % (i + 1, v)]())
                     elif block[1] == 0:
                         b.append(self.NODES['cell%d_block%d_op2' % (i + 2, v)]())
-                elif i == 3*cell_n:
+                elif i == 3*cell_n-2:
                     if block[0] == 1:
                         a.append(self.NODES['cell%d_block%d_op1' % (i+1, v)]())
                     elif block[1] == 1:
@@ -347,7 +374,13 @@ class CreatePNANetGraph(object):
             self.NODES['cell.%d_concate' % (i)].out_nodes = a
             for p in b:
                 self.NODES['cell.%d_concate' % (i)].out_nodes.append(p)
-
+            # if i == 2 * cell_n / 3:
+            #     self.NODES['AuxiliaryHead_avg'].in_nodes = [self.NODES['cell.%d_concate' % (i)]()]
+            #     self.NODES['AuxiliaryHead_avg'].out_nodes = [self.NODES['AuxiliaryHead_cov1']()]
+            #     self.NODES['AuxiliaryHead_cov1'].in_nodes = [self.NODES['AuxiliaryHead_avg']()]
+            #     self.NODES['AuxiliaryHead_cov1'].out_nodes = [self.NODES['AuxiliaryHead_cov2']()]
+            #     self.NODES['AuxiliaryHead_cov2'].in_nodes = [self.NODES['AuxiliaryHead_cov1']()]
+            #     self.NODES['AuxiliaryHead_cov2'].out_nodes = []
     def create(self):
         Graph1 = NetGraph()
         Graph1.add_nodes([self.NODES[name] for name in self.NODES.keys()])
@@ -357,8 +390,8 @@ class CreatePNANetGraph(object):
 
 
 
-def create_pnanet_graph(arch, n):
-    G1 = CreatePNANetGraph(archtecture=arch, cell_n=n)
+def create_pnanet_graph(arch, F, n):
+    G1 = CreatePNANetGraph(archtecture=arch, channel=F ,cell_n=n)
     return G1.create()
 
 
@@ -396,12 +429,45 @@ def _oneto_str(compre_op_lc):
         use_prev += I1+I2
         ops += O1+O2
     return use_prev, ops
+# if __name__ == '__main__':
+#     S1 =  train_setting(2)
+#     print (S1[5])
+#     F=24
+#     G1 = create_pnanet_graph(S1[0], F, n=2)
+#     for s in S1:
+#         G2 = create_pnanet_graph(s, F, n=2)
+#         Y, dist = calculate_graph_dist(G1, G2)
+#         a = _oneto_str(s)
+#         print(a, dist)
+def str_to_arch(w, b):
+    arch = torch.LongTensor([])
+    print(w)
+    for idx in range(b):
+        I1 = int(w[idx*2])
+        I2 = int(w[idx*2+1])
+        O1 = int(w[b*2+1+idx*2])
+        O2 = int(w[b*2+2+idx*2])
+        oneblock = torch.LongTensor([[[I1, I2, O1, O2]]])
+        arch = torch.cat([arch, oneblock], 1)
+    return arch
 if __name__ == '__main__':
+    # name = load_data('/home/lmy/Neural Archtecture Search/PNAS_pytorch/9_20_topk/lstm64_1/block_3.txt')
     S1 =  train_setting(2)
-    print (S1[5])
-    G1 = create_pnanet_graph(S1[0], n=2)
+    c = S1[0]
+    # print (name[0])
+    a = str_to_arch('1102031101 2341245323 ', b=5)
+    G1 = create_pnanet_graph(S1[23], F=24, n=2)
+    d_max = 0.636
+    # for s in S1:
+    #     # s = str_to_arch(s, b=3)[0]
+    #     G2 = create_pnanet_graph(s, n=2)
+    #     Y, dist = calculate_graph_dist(G1, G2)
+    #     if d_max < dist:
+    #         d_max = dist
+    print(d_max)
     for s in S1:
+        # s = str_to_arch(s, b=3)[0]
         G2 = create_pnanet_graph(s, n=2)
         Y, dist = calculate_graph_dist(G1, G2)
         a = _oneto_str(s)
-        print(a, dist)
+        print(a, dist/d_max)

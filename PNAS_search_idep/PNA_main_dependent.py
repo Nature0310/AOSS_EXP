@@ -13,7 +13,7 @@ import cfar_10_data as cfar
 from models.lstm_predict_model import PreAccLstm
 import torch.utils.data as Data
 from diverse import create_pnanet_graph, calculate_graph_dist
-
+import multiprocessing
 
 parser = argparse.ArgumentParser(description='PyTorch Condensed Convolutional Networks')
 # parser.add_argument('data', metavar='DIR', default='cifar10',
@@ -24,6 +24,8 @@ parser.add_argument('--epochs', default=20, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('-b', '--batch-size', default=64, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
+parser.add_argument('-F', default=24, type=int,
+                    metavar='N', help='num of fliters')
 # parser.add_argument('-k-num', default=5, type=int,
 #                     metavar='N', help='num of choose arch')
 parser.add_argument('--lr', '--learning-rate', default=0.025, type=float,
@@ -382,6 +384,20 @@ def LSTM_prediction(model, data_loader, args, archtecture, num=args.knum, divers
     return k_num, predic, topk, prek
 
 
+def target_fn(arg):
+    G2 = create_pnanet_graph(arg['G2'], F=args.F, n=2)
+    _, dist = calculate_graph_dist(arg['G1'], G2)
+    result = dict(id=arg['id'], dist=dist)
+    return result
+def parallel_exc(func, args, num_pool=20):
+    pool = multiprocessing.Pool(processes=num_pool)
+    res = []
+    for arg in args:
+        res.append(pool.apply_async(func=func, args=(arg, )))
+    print('waiting multi process ...')
+    pool.close()
+    pool.join()
+    return res
 def Diverse(Y, archtecture, num, deta=args.distance):
     Y = Y.cpu().numpy()
     index = np.argsort(-Y)
@@ -389,19 +405,31 @@ def Diverse(Y, archtecture, num, deta=args.distance):
     archtecture = archtecture[index, :, :]
     _mask = np.ones_like(Y)
     diverse_k = []
+    end = time.time()
+    d_max = 1
+    print ('debug4', d_max, time.time()-end)
+    _m_num = 0
+    end = time.time()
     for i in range(num):
         idx = np.where(_mask==1)[0]
         if len(idx) == 0:
             break
         diverse_k.append(idx[0])
-        G1 = create_pnanet_graph(archtecture[idx[0]], n=2)
-        for j in range(len(idx)):
-            G2 = create_pnanet_graph(archtecture[idx[j]], n=2)
-            _, dist = calculate_graph_dist(G1, G2)
-            if dist < deta:
-                _mask[idx[j]] = 0
-            else:
-                break
+        G1 = create_pnanet_graph(archtecture[idx[0]], F=args.F, n=2)
+        dele = _m_num
+        graphs = []
+        for j in range(num*100-dele):
+            graph = dict(id=j, G1=G1, G2=archtecture[idx[j]])
+            graphs.append(graph)
+        res = parallel_exc(func=target_fn, args=graphs)
+        for r in res:
+            distance = r.get()
+            if distance['dist']/d_max < deta:
+                _mask[idx[distance['id']]] = 0
+                _m_num+=1
+
+    idx = np.where(_mask==1)[0]
+    print('debug5', idx[0], time.time()-end)
     prediction = Y[diverse_k]
     arch = archtecture[diverse_k, :, :]
     return arch, prediction
@@ -495,7 +523,7 @@ def load_data(arch, change=False):
         return acc
     # with open("/home/lmy/Neural Archtecture Search/PNAS_pytorch/results_test/savedir/PNAS_0_block.txt", "r") as fp:
 
-    fp = open("./PNAS_1_block.txt", "r")
+    fp = open("./one_b_stem/savedir/PNAS_1_block.txt", "r")
     lines = fp.readlines()
     acc = []
     print("reading one block accuracy")
@@ -695,8 +723,15 @@ def main():
                 result_dict = read_result(readpath)
                 result_filename = os.path.join(args.savedir, fn)
                 os.makedirs(args.savedir, exist_ok=True)
-                result_dict[name] = {'test': [test_prec1]}
-                result_dict[name]['valid'] = [val_prec1]
+
+                ####
+                test = test_prec1.cpu().numpy()
+                valid = val_prec1.cpu().numpy()
+                ####
+
+
+                result_dict[name] = {'test': [test]}
+                result_dict[name]['valid'] = [valid]
                 save_dict(result_dict, readpath)
                 with open(result_filename, 'a') as fout:
                     fout.write("%s %s : %.4f %.4f %.4f   %s %s : %.4f\n"
@@ -708,6 +743,12 @@ def main():
             else:
                 val_prec1 = average(result_dict[name]['valid'])
                 test_prec1 = average(result_dict[name]['test'])
+
+                #####
+                val_prec1 = torch.from_numpy(val_prec1).cuda()
+                test_prec1 = torch.from_numpy(test_prec1).cuda()
+                ######
+
                 val_acc.append(val_prec1)
                 fn = ("block_%d.txt" % b)
                 result_filename = os.path.join(args.savedir, fn)
@@ -813,8 +854,14 @@ def main():
                 result_dict = read_result(readpath)
                 result_filename = os.path.join(args.savedir, fn)
                 os.makedirs(args.savedir, exist_ok=True)
-                result_dict[name] = {'test': [test_prec1]}
-                result_dict[name]['valid'] = [val_prec1]
+
+                ####
+                test = test_prec1.cpu().numpy()
+                valid = val_prec1.cpu().numpy()
+                ####
+
+                result_dict[name] = {'test': [test]}
+                result_dict[name]['valid'] = [valid]
                 save_dict(result_dict, readpath)
                 with open(result_filename, 'a') as fout:
                     fout.write("%s %s : %.4f %.4f %.4f   %s %s : %.4f\n"
@@ -826,6 +873,12 @@ def main():
             else:
                 val_prec1 = average(result_dict[name]['valid'])
                 test_prec1 = average(result_dict[name]['test'])
+
+                #####
+                val_prec1 = torch.from_numpy(val_prec1).cuda()
+                test_prec1 = torch.from_numpy(test_prec1).cuda()
+                ######
+
                 if appending:
                     new = torch.cat([new, s_], 0)
                     val_acc.append(val_prec1)
